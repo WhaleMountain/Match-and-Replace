@@ -8,17 +8,25 @@ from burp import IBurpExtenderCallbacks
 from burp import IContextMenuFactory
 from burp import IContextMenuInvocation
 from java.io import PrintWriter
-from javax.swing import JPanel, JScrollPane, JButton, JLabel, JMenuItem, JComboBox, JTable, JTextField, JFileChooser, JOptionPane
+from javax.swing import JPanel
+from javax.swing import JButton
+from javax.swing import JLabel
+from javax.swing import JFileChooser
+from javax.swing import JOptionPane
+from javax.swing import JTextArea
+from javax.swing import JScrollPane
 from javax.swing.filechooser import FileNameExtensionFilter
 from javax.swing.table import TableModel
 from javax.swing.table import DefaultTableModel
+from java.awt import Insets
 from java.awt import Dimension, Color
 from java.awt.event import ActionListener
 import json
 import re
 
-class BurpExtender(IBurpExtender, IProxyListener, ActionListener):
+class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     EXTENSION_NAME = "M&R Specific target"
+    TAB_NAME       = "M&R Config"
     NEWLINE        = "\r\n"
 
     def __init__(self):
@@ -26,49 +34,57 @@ class BurpExtender(IBurpExtender, IProxyListener, ActionListener):
         url_pattern = "https?://"
         self.url_regex = re.compile(url_pattern)
 
-        self.sample_data = {
-            "http://localhost/": [
+        self.replace_targets = {
+            "https://example.com/": [
                 {
-                    "isEnable": False,
-                    "type": "Request body",
-                    "matchPattern": "",
-                    "replaceString": '{"user":"sato","password":"sato123"}'
-                },
-                {
-                    "isEnable": True,
-                    "type": "Request header",
-                    "matchPattern": "^Cookie.*$",
-                    "replaceString": "Cookie: Auth=aa"
+                    "Comment": "Example Math and Replace",
+                    "Enable": True,
+                    "Method": "GET",
+                    "Type": "Request header",
+                    "Pattern": "^Cookie.*$",
+                    "Replace": "Cookie: Test=test"
                 }
-            ],
+            ]
+        }
+        init_json = json.dumps(self.replace_targets, sort_keys=True, indent=4)
 
-            "http://myapp.com/api/auth/login": [
-                {
-                    "isEnable": True,
-                    "type": "Request body",
-                    "matchPattern": '{"email":".*","password":".*"}',
-                    "replaceString": '{"email":"user2@example.com","password":"password"}'
-                },
-                {
-                    "isEnable": True,
-                    "type": "Request header",
-                    "matchPattern": "^Accept.*$",
-                    "replaceString": ""
-                },
-                {
-                    "isEnable": True,
-                    "type": "Request header",
-                    "matchPattern": "^If-None-Match.*$",
-                    "replaceString": ""
-                },
-                {
-                    "isEnable": True,
-                    "type": "Request header",
-                    "matchPattern": "^If-Modified-Since.*$",
-                    "replaceString": ""
-                }
-            ],
-            }
+        # GUI
+        self._main_panel = JPanel()
+        self._main_panel.setLayout(None)
+
+        config_panel = JPanel()
+        title = JLabel("Math and Replace for Specific target")
+        self._save_btn = JButton("Save")
+        self._import_btn = JButton("Import")
+        self._export_btn = JButton("Export")
+
+        self._json_chooser = JFileChooser()
+        self._json_chooser.setFileSelectionMode(JFileChooser.FILES_ONLY)
+        self._json_chooser.setAcceptAllFileFilterUsed(False)
+        extFilter = FileNameExtensionFilter("JSON files (*.json)", ["json"])
+        self._json_chooser.addChoosableFileFilter(extFilter)
+
+        config_panel.setBounds(279, 50, 500, 50)
+
+        self._save_btn.addActionListener(self)
+        self._import_btn.addActionListener(self)
+        self._export_btn.addActionListener(self)
+
+        config_panel.add(title)
+        config_panel.add(self._save_btn)
+        config_panel.add(self._import_btn)
+        config_panel.add(self._export_btn)
+
+        self._json_area = JTextArea(init_json)
+        self._json_area.setWrapStyleWord(True) # 単語単位で折り返し
+        self._json_area.setCaretPosition(len(init_json))
+        self._json_area.setTabSize(2)
+        self._json_area.setMargin(Insets(5, 5, 5, 5))
+        scroll_pane = JScrollPane(self._json_area)
+        scroll_pane.setBounds(300, 130, 1000, 800)
+
+        self._main_panel.add(config_panel)
+        self._main_panel.add(scroll_pane)
 
     def	registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
@@ -76,9 +92,54 @@ class BurpExtender(IBurpExtender, IProxyListener, ActionListener):
         self.stdout    = PrintWriter(callbacks.getStdout(), True) #self.stdout.println()
 
         callbacks.setExtensionName(self.EXTENSION_NAME)
-        callbacks.addSuiteTab(ExtenderTab())
+        callbacks.addSuiteTab(self)
         callbacks.registerProxyListener(self)
 
+    def getTabCaption(self):
+        return self.TAB_NAME
+    
+    def getUiComponent(self):
+        return self._main_panel
+
+    def actionPerformed(self, event):
+        if event.getSource() is self._save_btn:
+            try:
+                self.replace_targets = json.loads(self._json_area.getText())
+            except ValueError:
+                return
+
+        # Clicked Import Button
+        elif event.getSource() is self._import_btn:
+            self._json_chooser.showOpenDialog(event.getSource())
+            import_file_path = self._json_chooser.getSelectedFile().getAbsolutePath()
+            with open(import_file_path, 'r') as f:
+                try:
+                    import_data = json.loads(f.read())
+                except:
+                    return
+            
+            self._json_area.setText(json.dumps(import_data, sort_keys=True, indent=4))
+            self.replace_targets = import_data
+
+        # Clicked Export Button
+        elif event.getSource() is self._export_btn:
+            self._json_chooser.showSaveDialog(event.getSource())
+            export_file_path = self._json_chooser.getSelectedFile().getAbsolutePath()
+            file_ext = self._json_chooser.getSelectedFile().getName().split(".")[-1]
+            if file_ext.lower() != "json":
+                export_file_path = '{}.json'.format(export_file_path)
+
+            # 上書き保存の確認
+            if self._json_chooser.getSelectedFile().exists():
+                message = "{} already exists.\nDo you want to replace it?".format(export_file_path)
+                ans = JOptionPane.showConfirmDialog(None, message, "Save As", JOptionPane.YES_NO_OPTION)
+                if (ans == JOptionPane.NO_OPTION):
+                    return
+
+            export_data = self._json_area.getText()
+            with open(export_file_path, 'w') as f:
+                f.write(export_data)
+    
     def processProxyMessage(self, messageIsRequest, message): 
         if not messageIsRequest:
             return
@@ -87,34 +148,40 @@ class BurpExtender(IBurpExtender, IProxyListener, ActionListener):
         request = self.helpers.bytesToString(messageInfo.getRequest())
         requestInfo = self.helpers.analyzeRequest(messageInfo.getHttpService(), request)
         url         = requestInfo.getUrl()
+        method      = requestInfo.getMethod()
 
-        if not self.callbacks.isInScope(url) or requestInfo.getMethod() == "OPTIONS":
-            return 
+        replace_terms = []
+        try:
+            replace_terms = self.replace_targets["{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())]
+        except KeyError:
+            return
 
-        data = self.sample_data["{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())]
         body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
         request_headers = self.helpers.bytesToString(request[:body_offset])
         request_body = self.helpers.bytesToString(request[body_offset:])
 
-        for d in data:
-            if not d["isEnable"]:
+        includeBody = False
+        for terms in replace_terms:
+            if not terms["Enable"] or terms["Method"] != method:
                 continue
 
-            if d["type"] == "Request body":
-                request_body = self.replaceRequestBody(request_body, d["matchPattern"], d["replaceString"])
+            if terms["Type"] == "Request body":
+                includeBody = True
+                request_body = self.replaceRequestBody(request_body, terms["Pattern"], terms["Replace"])
 
-            elif d["type"] == "Request header":
-                request_headers = self.replaceRequestHeader(request_headers, d["matchPattern"], d["replaceString"])
+            elif terms["Type"] == "Request header":
+                request_headers = self.replaceRequestHeader(request_headers, terms["Pattern"], terms["Replace"])
 
-        # bodyがあるときはContent-Lengthの更新必要
-        messageInfo.setRequest(self.updateContentLength("{}{}".format(request_headers, request_body)))
+        # Bodyを書き換えた際はContent-Lengthを更新する
+        if includeBody:
+            messageInfo.setRequest(
+                self.updateContentLength("{}{}".format(request_headers, request_body))
+            )
 
-        #messageInfo.setRequest(
-        #    "{}{}".format(
-        #        request_headers,
-        #        request_body
-        #    )
-        #)
+        else:
+            messageInfo.setRequest(
+                "{}{}".format(request_headers, request_body)
+            )
 
     def replaceRequestHeader(self, request_headers, replace_pattern, replace_str):
         if replace_pattern == "":
@@ -174,16 +241,3 @@ class BurpExtender(IBurpExtender, IProxyListener, ActionListener):
             request_headers[content_length_end:],
             request_body
         )
-
-class ExtenderTab(ITab):
-    TAB_NAME = "M&R Specific target"
-
-    def __init__(self):
-        self._main_panel = JPanel()
-        self._main_panel.setLayout(None)
-    
-    def getTabCaption(self):
-        return self.TAB_NAME
-    
-    def getUiComponent(self):
-        return self._main_panel
