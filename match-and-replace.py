@@ -16,6 +16,7 @@ from javax.swing import JOptionPane
 from javax.swing import JTextArea
 from javax.swing import JScrollPane
 from javax.swing.filechooser import FileNameExtensionFilter
+from java.io import File
 from javax.swing.table import TableModel
 from javax.swing.table import DefaultTableModel
 from java.awt import Insets
@@ -37,7 +38,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         self.replace_targets = {
             "https://example.com/": [
                 {
-                    "Comment": "Example Math and Replace",
+                    "Comment": "Sample Math and Replace",
                     "Enable": True,
                     "Method": "GET",
                     "Type": "Request header",
@@ -89,7 +90,6 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     def	registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
         self.helpers   = callbacks.getHelpers()
-        self.stdout    = PrintWriter(callbacks.getStdout(), True) #self.stdout.println()
 
         callbacks.setExtensionName(self.EXTENSION_NAME)
         callbacks.addSuiteTab(self)
@@ -106,6 +106,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             try:
                 self.replace_targets = json.loads(self._json_area.getText())
             except ValueError:
+                self.callbacks.printError("Parse error")
                 return
 
         # Clicked Import Button
@@ -116,6 +117,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
                 try:
                     import_data = json.loads(f.read())
                 except:
+                    self.callbacks.printError("Parse error")
                     return
             
             self._json_area.setText(json.dumps(import_data, sort_keys=True, indent=4))
@@ -128,6 +130,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             file_ext = self._json_chooser.getSelectedFile().getName().split(".")[-1]
             if file_ext.lower() != "json":
                 export_file_path = '{}.json'.format(export_file_path)
+                self._json_chooser.setSelectedFile(File(export_file_path))
 
             # 上書き保存の確認
             if self._json_chooser.getSelectedFile().exists():
@@ -154,7 +157,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         try:
             replace_terms = self.replace_targets["{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())]
         except KeyError:
-            return
+            self.callbacks.printOutput("No match")
 
         body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
         request_headers = self.helpers.bytesToString(request[:body_offset])
