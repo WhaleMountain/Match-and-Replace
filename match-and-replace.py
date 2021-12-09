@@ -20,21 +20,18 @@ from java.io import File
 from javax.swing.table import TableModel
 from javax.swing.table import DefaultTableModel
 from java.awt import Insets
+from java.awt import Font
 from java.awt import Dimension, Color
 from java.awt.event import ActionListener
 import json
 import re
 
 class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
-    EXTENSION_NAME = "M&R Specific target"
+    EXTENSION_NAME = "M&R Rules"
     TAB_NAME       = "M&R Config"
     NEWLINE        = "\r\n"
 
     def __init__(self):
-        # URLの正規表現
-        url_pattern = "https?://"
-        self.url_regex = re.compile(url_pattern)
-
         self.replace_targets = {
             "https://example.com/": [
                 {
@@ -54,7 +51,8 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         self._main_panel.setLayout(None)
 
         config_panel = JPanel()
-        title = JLabel("Math and Replace for Specific target")
+        config_panel.setBounds(240, 50, 500, 50)
+        title = JLabel("Math and Replace Rules")
         self._save_btn = JButton("Save")
         self._import_btn = JButton("Import")
         self._export_btn = JButton("Export")
@@ -64,8 +62,6 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         self._json_chooser.setAcceptAllFileFilterUsed(False)
         extFilter = FileNameExtensionFilter("JSON files (*.json)", ["json"])
         self._json_chooser.addChoosableFileFilter(extFilter)
-
-        config_panel.setBounds(279, 50, 500, 50)
 
         self._save_btn.addActionListener(self)
         self._import_btn.addActionListener(self)
@@ -81,6 +77,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         self._json_area.setCaretPosition(len(init_json))
         self._json_area.setTabSize(2)
         self._json_area.setMargin(Insets(5, 5, 5, 5))
+        self._json_area.setFont(Font(Font.DIALOG_INPUT, Font.PLAIN, 16))
         scroll_pane = JScrollPane(self._json_area)
         scroll_pane.setBounds(300, 130, 1000, 800)
 
@@ -157,7 +154,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         try:
             replace_terms = self.replace_targets["{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())]
         except KeyError:
-            self.callbacks.printOutput("No match")
+            return
 
         body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
         request_headers = self.helpers.bytesToString(request[:body_offset])
