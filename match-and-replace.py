@@ -3,11 +3,7 @@
 from burp import ITab
 from burp import IBurpExtender
 from burp import IProxyListener
-from burp import IParameter
 from burp import IBurpExtenderCallbacks
-from burp import IContextMenuFactory
-from burp import IContextMenuInvocation
-from java.io import PrintWriter
 from javax.swing import JPanel
 from javax.swing import JButton
 from javax.swing import JLabel
@@ -17,11 +13,9 @@ from javax.swing import JTextArea
 from javax.swing import JScrollPane
 from javax.swing.filechooser import FileNameExtensionFilter
 from java.io import File
-from javax.swing.table import TableModel
-from javax.swing.table import DefaultTableModel
+from java.io import PrintWriter
 from java.awt import Insets
 from java.awt import Font
-from java.awt import Dimension, Color
 from java.awt.event import ActionListener
 import json
 import re
@@ -87,6 +81,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     def	registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
         self.helpers   = callbacks.getHelpers()
+        #self._stdout    = PrintWriter(callbacks.getStdout(), True) #self._stdout.println()
 
         callbacks.setExtensionName(self.EXTENSION_NAME)
         callbacks.addSuiteTab(self)
@@ -157,58 +152,38 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             return
 
         body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
-        request_headers = self.helpers.bytesToString(request[:body_offset])
+        request_headers = self.helpers.analyzeRequest(messageInfo).getHeaders()
         request_body = self.helpers.bytesToString(request[body_offset:])
 
-        includeBody = False
         for terms in replace_terms:
             if not terms["Enable"] or terms["Method"] != method:
                 continue
 
-            if terms["Type"] == "Request body":
-                includeBody = True
+            if terms["Type"] == "Request header":
+                request_headers = self.replaceRequestHeader(list(request_headers), terms["Pattern"], terms["Replace"])
+
+            elif terms["Type"] == "Request body":
                 request_body = self.replaceRequestBody(request_body, terms["Pattern"], terms["Replace"])
 
-            elif terms["Type"] == "Request header":
-                request_headers = self.replaceRequestHeader(request_headers, terms["Pattern"], terms["Replace"])
-
-        # Bodyを書き換えた際はContent-Lengthを更新する
-        if includeBody:
-            messageInfo.setRequest(
-                self.updateContentLength("{}{}".format(request_headers, request_body))
-            )
-
-        else:
-            messageInfo.setRequest(
-                "{}{}".format(request_headers, request_body)
-            )
+        replaced_request = self.helpers.buildHttpMessage(request_headers, request_body)
+        messageInfo.setRequest(replaced_request)
 
     def replaceRequestHeader(self, request_headers, replace_pattern, replace_str):
         if replace_pattern == "":
-            header_last = request_headers.rfind(self.NEWLINE)
-            return "{}{}{}{}".format(request_headers[:header_last], replace_str, self.NEWLINE, self.NEWLINE)
-
-        regex = re.compile(replace_pattern)
-        replace_header_start = -1
-        replace_header_end = -1
-        for header in request_headers.split(self.NEWLINE):
-            if regex.match(header):
-                replace_header_start = self.helpers.indexOf(request_headers, header, False, 0, len(request_headers))
-                replace_header_end = self.helpers.indexOf(request_headers, self.NEWLINE, False, replace_header_start, len(request_headers))
-                break
-        
-        if replace_header_start == -1 and replace_header_end == -1:
+            request_headers.append(replace_str)
             return request_headers
 
-        # \r\n も削除対象
-        if replace_str == "":
-            replace_header_end += 2
+        regex = re.compile(replace_pattern)
+        for idx, header in enumerate(request_headers):
+            if regex.match(header):
+                if replace_str == "":
+                    request_headers.remove(request_headers[idx])
+                    break
+                request_headers[idx] = replace_str
+                break
 
-        return "{}{}{}".format(
-            request_headers[:replace_header_start],
-            replace_str,
-            request_headers[replace_header_end:]
-        )
+        return request_headers
+
 
     def replaceRequestBody(self, request_body, replace_pattern, replace_str):
         if replace_pattern == "":
@@ -220,24 +195,3 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     
     def replaceResponseBody(self, response_body, replace_pattern, replace_str):
         pass
-
-    def updateContentLength(self, request):
-        body_offset = self.helpers.indexOf(request, "{}{}".format(self.NEWLINE, self.NEWLINE), False, 0, len(request)) + 4
-        request_headers = self.helpers.bytesToString(request[:body_offset])
-        request_body = self.helpers.bytesToString(request[body_offset:])
-
-        content_length = "Content-Length: {}".format(len(request_body))
-        content_length_start = -1
-        content_length_end = -1
-        for header in request_headers.split(self.NEWLINE):
-            if header.startswith("Content-Length"):
-                content_length_start = self.helpers.indexOf(request_headers, header, False, 0, len(request_headers))
-                content_length_end = self.helpers.indexOf(request_headers, self.NEWLINE, False, content_length_start, len(request_headers))
-                break
-
-        return "{}{}{}{}".format(
-            request_headers[:content_length_start],
-            content_length,
-            request_headers[content_length_end:],
-            request_body
-        )
