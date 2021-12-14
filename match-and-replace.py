@@ -103,7 +103,9 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
 
         # Clicked Import Button
         elif event.getSource() is self._import_btn:
-            self._json_chooser.showOpenDialog(event.getSource())
+            dialog_ans = self._json_chooser.showOpenDialog(event.getSource())
+            if dialog_ans == JFileChooser.CANCEL_OPTION:
+                return
             import_file_path = self._json_chooser.getSelectedFile().getAbsolutePath()
             with open(import_file_path, 'r') as f:
                 try:
@@ -117,7 +119,9 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
 
         # Clicked Export Button
         elif event.getSource() is self._export_btn:
-            self._json_chooser.showSaveDialog(event.getSource())
+            dialog_ans = self._json_chooser.showSaveDialog(event.getSource())
+            if dialog_ans == JFileChooser.CANCEL_OPTION:
+                return
             export_file_path = self._json_chooser.getSelectedFile().getAbsolutePath()
             file_ext = self._json_chooser.getSelectedFile().getName().split(".")[-1]
             if file_ext.lower() != "json":
