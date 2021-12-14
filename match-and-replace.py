@@ -81,7 +81,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     def	registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
         self.helpers   = callbacks.getHelpers()
-        #self._stdout    = PrintWriter(callbacks.getStdout(), True) #self._stdout.println()
+        self._stdout    = PrintWriter(callbacks.getStdout(), True) #self._stdout.println()
 
         callbacks.setExtensionName(self.EXTENSION_NAME)
         callbacks.addSuiteTab(self)
@@ -136,14 +136,13 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
                 f.write(export_data)
     
     def processProxyMessage(self, messageIsRequest, message): 
-        if not messageIsRequest:
-            return
-        
         messageInfo = message.getMessageInfo()
-        request = self.helpers.bytesToString(messageInfo.getRequest())
+        request = messageInfo.getRequest()
+        response = messageInfo.getResponse()
+
         requestInfo = self.helpers.analyzeRequest(messageInfo.getHttpService(), request)
-        url         = requestInfo.getUrl()
-        method      = requestInfo.getMethod()
+        url = requestInfo.getUrl()
+        method = requestInfo.getMethod()
 
         replace_terms = []
         try:
@@ -151,22 +150,44 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
         except KeyError:
             return
 
-        body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
-        request_headers = self.helpers.analyzeRequest(messageInfo).getHeaders()
-        request_body = self.helpers.bytesToString(request[body_offset:])
+        # リクエストのMatch and Replace
+        if response == None:
+            request_body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
+            request_headers = self.helpers.analyzeRequest(messageInfo).getHeaders()
+            request_body = self.helpers.bytesToString(request[request_body_offset:])
 
-        for terms in replace_terms:
-            if not terms["Enable"] or terms["Method"] != method:
-                continue
+            for terms in replace_terms:
+                if not terms["Enable"] or terms["Method"] != method:
+                    continue
 
-            if terms["Type"] == "Request header":
-                request_headers = self.replaceRequestHeader(list(request_headers), terms["Pattern"], terms["Replace"])
+                if terms["Type"] == "Request header":
+                    request_headers = self.replaceRequestHeader(list(request_headers), terms["Pattern"], terms["Replace"])
 
-            elif terms["Type"] == "Request body":
-                request_body = self.replaceRequestBody(request_body, terms["Pattern"], terms["Replace"])
+                elif terms["Type"] == "Request body":
+                    request_body = self.replaceRequestBody(request_body, terms["Pattern"], terms["Replace"])
 
-        replaced_request = self.helpers.buildHttpMessage(request_headers, request_body)
-        messageInfo.setRequest(replaced_request)
+            replaced_request = self.helpers.buildHttpMessage(request_headers, request_body)
+            messageInfo.setRequest(replaced_request)
+
+        # レスポンスのMatch and Replace
+        else:
+            response_body_offset = self.helpers.analyzeResponse(response).getBodyOffset()
+            response_headers = self.helpers.analyzeResponse(response).getHeaders()
+            response_body = self.helpers.bytesToString(response[response_body_offset:])
+
+            for terms in replace_terms:
+                if not terms["Enable"] or terms["Method"] != method:
+                    continue
+
+                if terms["Type"] == "Response header":
+                    response_headers = self.replaceResponseHeader(list(response_headers), terms["Pattern"], terms["Replace"])
+
+                elif terms["Type"] == "Response body":
+                    response_body = self.replaceResponseBody(response_body, terms["Pattern"], terms["Replace"])
+
+            replaced_response = self.helpers.buildHttpMessage(response_headers, response_body)
+            messageInfo.setResponse(replaced_response)
+
 
     def replaceRequestHeader(self, request_headers, replace_pattern, replace_str):
         if replace_pattern == "":
@@ -184,14 +205,29 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
 
         return request_headers
 
-
     def replaceRequestBody(self, request_body, replace_pattern, replace_str):
         if replace_pattern == "":
             return "{}{}".format(request_body, replace_str)
         return re.sub(replace_pattern, replace_str, request_body)
 
+
     def replaceResponseHeader(self, response_headers, replace_pattern, replace_str):
-        pass
+        if replace_pattern == "":
+            response_headers.append(replace_str)
+            return response_headers
+
+        regex = re.compile(replace_pattern)
+        for idx, header in enumerate(response_headers):
+            if regex.match(header):
+                if replace_str == "":
+                    response_headers.remove(response_headers[idx])
+                    break
+                response_headers[idx] = replace_str
+                break
+
+        return response_headers
     
     def replaceResponseBody(self, response_body, replace_pattern, replace_str):
-        pass
+        if replace_pattern == "":
+            return "{}{}".format(response_body, replace_str)
+        return re.sub(replace_pattern, replace_str, response_body)
