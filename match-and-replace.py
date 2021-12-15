@@ -22,7 +22,7 @@ import re
 
 class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     EXTENSION_NAME = "M&R Rules"
-    TAB_NAME       = "M&R Config"
+    TAB_NAME       = "M&R Rules"
     NEWLINE        = "\r\n"
 
     def __init__(self):
@@ -155,7 +155,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             return
 
         # リクエストのMatch and Replace
-        if response == None:
+        if messageIsRequest:
             request_body_offset = self.helpers.analyzeRequest(messageInfo).getBodyOffset()
             request_headers = self.helpers.analyzeRequest(messageInfo).getHeaders()
             request_body = self.helpers.bytesToString(request[request_body_offset:])
@@ -174,7 +174,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             messageInfo.setRequest(replaced_request)
 
         # レスポンスのMatch and Replace
-        else:
+        elif response != None:
             response_body_offset = self.helpers.analyzeResponse(response).getBodyOffset()
             response_headers = self.helpers.analyzeResponse(response).getHeaders()
             response_body = self.helpers.bytesToString(response[response_body_offset:])
