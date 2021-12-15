@@ -4,6 +4,8 @@ from burp import ITab
 from burp import IBurpExtender
 from burp import IProxyListener
 from burp import IBurpExtenderCallbacks
+from burp import IContextMenuFactory
+from burp import IContextMenuInvocation
 from javax.swing import JPanel
 from javax.swing import JButton
 from javax.swing import JLabel
@@ -11,6 +13,7 @@ from javax.swing import JFileChooser
 from javax.swing import JOptionPane
 from javax.swing import JTextArea
 from javax.swing import JScrollPane
+from javax.swing import JMenuItem
 from javax.swing.filechooser import FileNameExtensionFilter
 from java.io import File
 from java.io import PrintWriter
@@ -20,9 +23,11 @@ from java.awt.event import ActionListener
 import json
 import re
 
-class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
+class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, IContextMenuInvocation, ActionListener):
     EXTENSION_NAME = "M&R Rules"
     TAB_NAME       = "M&R Rules"
+    MENU_NAME      = "Add rule"
+    TARGETS_KEYS   = set(["Enable", "Method", "Comment", "Pattern", "Replace", "Type"])
     NEWLINE        = "\r\n"
 
     def __init__(self):
@@ -33,8 +38,8 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
                     "Enable": True,
                     "Method": "GET",
                     "Type": "Request header",
-                    "Pattern": "^Cookie.*$",
-                    "Replace": "Cookie: Test=test"
+                    "Pattern": "^Referer.*$",
+                    "Replace": "Referer: https://example.com/"
                 }
             ]
         }
@@ -85,6 +90,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
 
         callbacks.setExtensionName(self.EXTENSION_NAME)
         callbacks.addSuiteTab(self)
+        callbacks.registerContextMenuFactory(self)
         callbacks.registerProxyListener(self)
 
     def getTabCaption(self):
@@ -93,7 +99,23 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
     def getUiComponent(self):
         return self._main_panel
 
+    def createMenuItems(self, invocation):
+        menu = []
+        menu.append(JMenuItem(self.MENU_NAME, actionPerformed=lambda x, inv=invocation: self.menuActionAdd(inv)))
+        return menu
+
+    def menuActionAdd(self, inv):
+        messages = inv.getSelectedMessages()
+        for messageInfo in messages:
+            requestInfo = self.helpers.analyzeRequest(messageInfo.getHttpService(), messageInfo.getRequest())
+            url = requestInfo.getUrl()
+            add_target_url = "{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())
+            self.replace_targets.setdefault(add_target_url, [{}])
+        if len(messages) > 0:
+            self._json_area.setText(json.dumps(self.replace_targets, sort_keys=True, indent=4))
+
     def actionPerformed(self, event):
+        # Clicked Save Button
         if event.getSource() is self._save_btn:
             try:
                 self.replace_targets = json.loads(self._json_area.getText())
@@ -161,6 +183,9 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             request_body = self.helpers.bytesToString(request[request_body_offset:])
 
             for terms in replace_terms:
+                if self.TARGETS_KEYS != set(terms.keys()):
+                    continue
+
                 if not terms["Enable"] or terms["Method"] != method:
                     continue
 
@@ -180,6 +205,9 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, ActionListener):
             response_body = self.helpers.bytesToString(response[response_body_offset:])
 
             for terms in replace_terms:
+                if self.TARGETS_KEYS != set(terms.keys()):
+                    continue
+
                 if not terms["Enable"] or terms["Method"] != method:
                     continue
 
