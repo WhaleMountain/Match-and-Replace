@@ -170,9 +170,9 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
         url = requestInfo.getUrl()
         method = requestInfo.getMethod()
 
-        replace_terms = []
+        replace_rules = []
         try:
-            replace_terms = self.replace_targets["{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())]
+            replace_rules = self.replace_targets["{}://{}{}".format(url.getProtocol(), url.getHost(), url.getPath())]
         except KeyError:
             return
 
@@ -182,18 +182,18 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
             request_headers = self.helpers.analyzeRequest(messageInfo).getHeaders()
             request_body = self.helpers.bytesToString(request[request_body_offset:])
 
-            for terms in replace_terms:
-                if self.TARGETS_KEYS != set(terms.keys()):
+            for rule in replace_rules:
+                if self.TARGETS_KEYS != set(rule.keys()):
                     continue
 
-                if not terms["Enable"] or terms["Method"] != method:
+                if not rule["Enable"] or rule["Method"] != method:
                     continue
 
-                if terms["Type"] == "Request header":
-                    request_headers = self.replaceRequestHeader(list(request_headers), terms["Pattern"], terms["Replace"])
+                if rule["Type"] == "Request header":
+                    request_headers = self.replaceRequestHeader(list(request_headers), rule["Pattern"], rule["Replace"])
 
-                elif terms["Type"] == "Request body":
-                    request_body = self.replaceRequestBody(request_body, terms["Pattern"], terms["Replace"])
+                elif rule["Type"] == "Request body":
+                    request_body = self.replaceRequestBody(request_body, rule["Pattern"], rule["Replace"])
 
             replaced_request = self.helpers.buildHttpMessage(request_headers, request_body)
             messageInfo.setRequest(replaced_request)
@@ -204,18 +204,18 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
             response_headers = self.helpers.analyzeResponse(response).getHeaders()
             response_body = self.helpers.bytesToString(response[response_body_offset:])
 
-            for terms in replace_terms:
-                if self.TARGETS_KEYS != set(terms.keys()):
+            for rule in replace_rules:
+                if self.TARGETS_KEYS != set(rule.keys()):
                     continue
 
-                if not terms["Enable"] or terms["Method"] != method:
+                if not rule["Enable"] or rule["Method"] != method:
                     continue
 
-                if terms["Type"] == "Response header":
-                    response_headers = self.replaceResponseHeader(list(response_headers), terms["Pattern"], terms["Replace"])
+                if rule["Type"] == "Response header":
+                    response_headers = self.replaceResponseHeader(list(response_headers), rule["Pattern"], rule["Replace"])
 
-                elif terms["Type"] == "Response body":
-                    response_body = self.replaceResponseBody(response_body, terms["Pattern"], terms["Replace"])
+                elif rule["Type"] == "Response body":
+                    response_body = self.replaceResponseBody(response_body, rule["Pattern"], rule["Replace"])
 
             replaced_response = self.helpers.buildHttpMessage(response_headers, response_body)
             messageInfo.setResponse(replaced_response)
