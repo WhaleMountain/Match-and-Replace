@@ -27,7 +27,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
     EXTENSION_NAME = "M&R Rules"
     TAB_NAME       = "M&R Rules"
     MENU_NAME      = "Add rule"
-    TARGETS_KEYS   = set(["Enable", "Method", "Comment", "Pattern", "Replace", "Type"])
+    TARGETS_KEYS   = ("Enable", "Method", "Comment", "Pattern", "Replace", "Type")
     NEWLINE        = "\r\n"
 
     def __init__(self):
@@ -183,7 +183,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
             request_body = self.helpers.bytesToString(request[request_body_offset:])
 
             for rule in replace_rules:
-                if self.TARGETS_KEYS != set(rule.keys()):
+                if set(self.TARGETS_KEYS) != set(rule.keys()):
                     continue
 
                 if not rule["Enable"] or rule["Method"] != method:
@@ -205,7 +205,7 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
             response_body = self.helpers.bytesToString(response[response_body_offset:])
 
             for rule in replace_rules:
-                if self.TARGETS_KEYS != set(rule.keys()):
+                if set(self.TARGETS_KEYS) != set(rule.keys()):
                     continue
 
                 if not rule["Enable"] or rule["Method"] != method:
