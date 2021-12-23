@@ -28,7 +28,6 @@ class BurpExtender(IBurpExtender, IProxyListener, ITab, IContextMenuFactory, ICo
     TAB_NAME       = "M&R Rules"
     MENU_NAME      = "Add rule"
     TARGETS_KEYS   = ("Enable", "Method", "Comment", "Pattern", "Replace", "Type")
-    NEWLINE        = "\r\n"
 
     def __init__(self):
         self.replace_targets = {
